@@ -52,8 +52,11 @@ fn main() {
                     let mut i: usize = 0;
                     while start.elapsed() < run_for {
                         let idx = i % senders.len();
-                        senders[idx].send(()).await.unwrap();
-                        i += 1;
+                        // senders[idx].send(()).await.unwrap();
+                        // i += 1;
+                        if senders[idx].try_send(()).is_ok() {
+                            i += 1;
+                        }
                     }
                     i
                 })
@@ -77,5 +80,5 @@ fn main() {
         total_ops += handle.join().unwrap();
     }
 
-    println!("{}", total_ops)
+    println!("{},{},{}", bench_workers, workers, total_ops)
 }
