@@ -1,10 +1,8 @@
 use clap::Parser;
-use futures::{
-    channel::mpsc::{channel, Receiver, Sender},
-    SinkExt, StreamExt,
+use std::{
+    sync::mpsc::{channel, Receiver, Sender},
+    time::{Duration, Instant},
 };
-use std::time::{Duration, Instant};
-use tokio::runtime::Runtime;
 
 #[derive(Parser)]
 struct Args {
@@ -23,7 +21,7 @@ where
     let mut receivers = Vec::new();
     let mut senders = Vec::new();
     for _ in 0..n {
-        let (sender, receiver) = channel(1024);
+        let (sender, receiver) = channel();
         receivers.push(receiver);
         senders.push(sender);
     }
@@ -41,37 +39,29 @@ fn main() {
     let run_for = Duration::from_secs(run_for_seconds);
     let start = Instant::now();
 
-    let (receivers, senders) = make_communication_matrix::<()>(workers);
+    let (receivers, senders) = make_communication_matrix::<_>(workers);
 
     let handles: Vec<_> = (0..bench_workers)
         .map(|_| {
-            let mut senders = senders.clone();
+            let senders = senders.clone();
             std::thread::spawn(move || {
-                let rt = Runtime::new().unwrap();
-                rt.block_on(async move {
-                    let mut i: usize = 0;
-                    while start.elapsed() < run_for {
-                        let idx = i % senders.len();
-                        // senders[idx].send(()).await.unwrap();
-                        // i += 1;
-                        if senders[idx].try_send(()).is_ok() {
-                            i += 1;
-                        }
-                    }
-                    i
-                })
+                let mut i: usize = 0;
+                while start.elapsed() < run_for {
+                    let idx = i % senders.len();
+                    senders[idx].send(i).unwrap();
+                    i += 1;
+                }
+                i
             })
         })
         .collect();
 
-    for mut receiver in receivers {
+    for receiver in receivers {
         std::thread::spawn(move || {
-            let rt = Runtime::new().unwrap();
-            rt.block_on(async move {
-                while let Some(msg) = receiver.next().await {
-                    let _ = msg;
-                }
-            });
+            while let Ok(msg) = receiver.recv() {
+                // Just drop the message.
+                let _ = msg;
+            }
         });
     }
 
